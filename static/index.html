@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixelle Việt – Tạo video ngắn bằng AI</title>
+<style>
+:root{--bg:#f5f6fb;--card:#fff;--line:#e3e6ef;--text:#1d2433;--muted:#6b7385;--pri:#e5484d;--pri2:#ff7a59;--ok:#1f9d55}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:var(--bg);color:var(--text)}
+header{background:linear-gradient(120deg,var(--pri),var(--pri2));color:#fff;padding:22px 20px 26px}
+header h1{margin:0;font-size:24px}
+header p{margin:6px 0 0;opacity:.92;font-size:14px}
+main{max-width:1180px;margin:-14px auto 40px;padding:0 14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:980px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(20,30,60,.04)}
+.card h2{font-size:16px;margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+textarea,input[type=text],input[type=password],select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;background:#fbfcff}
+textarea{min-height:110px;resize:vertical}
+.seg{display:flex;background:#eef0f6;border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;padding:9px 6px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:#fff;color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.row{display:flex;gap:10px;align-items:center}
+.row>*{flex:1}
+input[type=range]{width:100%}
+.btn{display:inline-flex;justify-content:center;align-items:center;gap:6px;border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+.btn.main{width:100%;background:linear-gradient(120deg,var(--pri),var(--pri2));color:#fff;font-size:16px;padding:14px}
+.btn.main:disabled{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:#eef0f6;color:var(--text);font-size:13px;padding:9px 12px}
+.btn.ok{background:var(--ok);color:#fff}
+.hint{font-size:12px;color:var(--muted);margin-top:5px}
+.bar{height:10px;background:#eef0f6;border-radius:6px;overflow:hidden;margin:12px 0 6px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pri),var(--pri2));transition:width .4s}
+video{width:100%;border-radius:10px;background:#000;max-height:560px}
+.err{color:#c0262d;font-size:13px;white-space:pre-wrap}
+.hist{list-style:none;padding:0;margin:0}
+.hist li{border-top:1px solid var(--line);padding:9px 0;font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.hist li:first-child{border-top:0}
+.tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#eef0f6;color:var(--muted);white-space:nowrap}
+.tag.done{background:#e3f6ea;color:var(--ok)}.tag.error{background:#fde8e8;color:#c0262d}
+ol.script{padding-left:20px;font-size:13px;color:#333}
+ol.script li{margin:4px 0}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Pixelle Việt</h1>
+  <p>Nhập chủ đề → AI viết kịch bản, vẽ ảnh, đọc lời và dựng thành video ngắn. Chạy bằng Google Vertex AI.</p>
+</header>
+<main>
+  <section class="card">
+    <h2>📝 Nội dung</h2>
+    <div class="seg" id="modeSeg">
+      <button data-v="generate" class="on">AI viết kịch bản</button>
+      <button data-v="fixed">Kịch bản có sẵn</button>
+    </div>
+    <label id="textLabel">Chủ đề video</label>
+    <textarea id="text" placeholder="Ví dụ: 5 mẹo học từ vựng TOEIC hiệu quả cho người đi làm bận rộn"></textarea>
+    <div id="splitBox" class="hidden">
+      <label>Cách chia cảnh</label>
+      <select id="split_mode">
+        <option value="paragraph">Mỗi đoạn văn = 1 cảnh</option>
+        <option value="line">Mỗi dòng = 1 cảnh</option>
+        <option value="sentence">Mỗi câu = 1 cảnh</option>
+      </select>
+    </div>
+    <label>Tiêu đề (để trống thì AI tự đặt)</label>
+    <input type="text" id="title" placeholder="Ví dụ: Học TOEIC cho người bận rộn">
+    <div id="genBox">
+      <label>Số cảnh: <b id="nVal">5</b></label>
+      <input type="range" id="n_scenes" min="3" max="12" value="5">
+      <label>Ngôn ngữ lời thoại</label>
+      <select id="language"></select>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>🎨 Hình ảnh & 🎤 Giọng đọc</h2>
+    <label>Khung hình</label>
+    <select id="template"></select>
+    <label>Phong cách ảnh</label>
+    <select id="style"></select>
+    <input type="text" id="style_custom" class="hidden" placeholder="Mô tả phong cách (tiếng Anh tốt hơn)" style="margin-top:6px">
+    <label>Giọng đọc</label>
+    <div class="seg" id="provSeg">
+      <button data-v="eleven" class="on">ElevenLabs</button>
+      <button data-v="gemini">Gemini (Vertex)</button>
+    </div>
+    <div id="geminiModelBox" class="hidden">
+      <label>Model Gemini TTS</label>
+      <select id="gemini_model"></select>
+    </div>
+    <label>Chọn giọng</label>
+    <div class="row">
+      <select id="voice"></select>
+      <button class="btn ghost" id="previewBtn" style="flex:0 0 auto">▶ Nghe thử</button>
+    </div>
+    <div id="speedBox">
+      <label>Tốc độ đọc: <b id="spVal">1.0</b>x</label>
+      <input type="range" id="speed" min="0.7" max="1.2" step="0.05" value="1.0">
+    </div>
+    <audio id="previewAudio" class="hidden" controls style="width:100%;margin-top:8px"></audio>
+    <div class="hint" id="elevenWarn"></div>
+    <label><input type="checkbox" id="bgm" checked> Nhạc nền</label>
+    <input type="range" id="bgm_volume" min="0.02" max="0.4" step="0.02" value="0.12">
+    <label>Chữ ký chân video (tùy chọn)</label>
+    <input type="text" id="signature" placeholder="Ví dụ: @HocToeic">
+  </section>
+
+  <section class="card">
+    <h2>🎬 Tạo video</h2>
+    <div id="pwBox" class="hidden">
+      <label>Mật khẩu</label>
+      <input type="password" id="pw">
+    </div>
+    <button class="btn main" id="goBtn" style="margin-top:6px">✨ Tạo video</button>
+    <div class="hint">Mỗi video 5 cảnh mất khoảng 2–3 phút.</div>
+    <div id="status" class="hidden">
+      <div class="bar"><i id="barFill"></i></div>
+      <div id="statusMsg" style="font-size:14px"></div>
+      <div id="statusErr" class="err"></div>
+    </div>
+    <div id="result" class="hidden" style="margin-top:12px">
+      <h3 id="resTitle" style="margin:0 0 8px;font-size:15px"></h3>
+      <video id="resVideo" controls playsinline></video>
+      <div class="row" style="margin-top:10px">
+        <a class="btn ok" id="dlBtn" href="#">⬇ Tải video về</a>
+      </div>
+      <details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px">Xem kịch bản</summary><ol class="script" id="resScript"></ol></details>
+    </div>
+    <h2 style="margin-top:22px">🕘 Lịch sử</h2>
+    <ul class="hist" id="hist"><li class="hint">Chưa có video nào.</li></ul>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let OPT, mode = "generate", prov = "eleven", polling = null;
+const pw = () => localStorage.getItem("pv_pw") || "";
+const headers = () => ({"Content-Type": "application/json", "x-app-password": $("pw").value || pw()});
+
+function seg(id, cb){ $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
+  $(id).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); cb(b.dataset.v); }); }
+
+function fill(sel, items, val){ $(sel).innerHTML = items.map(i => `<option value="${i.id ?? i.key}">${i.name}</option>`).join(""); if(val) $(sel).value = val; }
+
+function fillVoices(){
+  fill("voice", prov === "gemini" ? OPT.gemini_voices : OPT.eleven_voices);
+  $("geminiModelBox").classList.toggle("hidden", prov !== "gemini");
+  $("speedBox").classList.toggle("hidden", prov === "gemini");
+  $("elevenWarn").textContent = (prov === "eleven" && !OPT.eleven_ready) ? "⚠ Máy chủ chưa cấu hình key ElevenLabs – hãy chọn Gemini." : "";
+}
+
+function params(){
+  return {mode, text: $("text").value, title: $("title").value, n_scenes: +$("n_scenes").value,
+    split_mode: $("split_mode").value, language: $("language").value, template: $("template").value,
+    style: $("style").value, style_custom: $("style").value === "custom" ? $("style_custom").value : "",
+    voice_provider: prov, voice: $("voice").value, gemini_model: $("gemini_model").value, speed: +$("speed").value,
+    bgm: $("bgm").checked, bgm_volume: +$("bgm_volume").value, signature: $("signature").value};
+}
+
+async function init(){
+  OPT = await (await fetch("/api/options")).json();
+  const groups = {};
+  OPT.templates.forEach(t => (groups[t.size_name] ||= []).push(t));
+  $("template").innerHTML = Object.entries(groups).map(([g, ts]) =>
+    `<optgroup label="${g}">${ts.map(t => `<option value="${t.key}">${t.name}</option>`).join("")}</optgroup>`).join("");
+  $("template").value = "1080x1920/image_default.html";
+  fill("style", [...OPT.styles, {key: "custom", name: "Tự mô tả…"}]);
+  fill("language", OPT.languages, "vi");
+  fill("gemini_model", OPT.gemini_models);
+  fillVoices();
+  if(OPT.password_required){ $("pwBox").classList.remove("hidden"); $("pw").value = pw(); }
+  loadHist();
+}
+
+seg("modeSeg", v => { mode = v;
+  $("textLabel").textContent = v === "fixed" ? "Kịch bản (mỗi cảnh 1 đoạn)" : "Chủ đề video";
+  $("text").placeholder = v === "fixed" ? "Dán kịch bản của bạn vào đây.\n\nMỗi đoạn văn sẽ thành 1 cảnh." : "Ví dụ: 5 mẹo học từ vựng TOEIC hiệu quả cho người đi làm bận rộn";
+  $("splitBox").classList.toggle("hidden", v !== "fixed"); $("genBox").classList.toggle("hidden", v === "fixed"); });
+seg("provSeg", v => { prov = v; fillVoices(); });
+$("n_scenes").oninput = e => $("nVal").textContent = e.target.value;
+$("speed").oninput = e => $("spVal").textContent = (+e.target.value).toFixed(2);
+$("style").onchange = e => $("style_custom").classList.toggle("hidden", e.target.value !== "custom");
+$("pw").onchange = e => localStorage.setItem("pv_pw", e.target.value);
+
+$("previewBtn").onclick = async () => {
+  const b = $("previewBtn"); b.disabled = true; b.textContent = "…";
+  try {
+    const sample = {vi: "Xin chào! Đây là giọng đọc mẫu cho video của bạn.", ja: "こんにちは！これはあなたの動画のサンプル音声です。", en: "Hello! This is a sample voice for your video."}[$("language").value] || "Xin chào! Đây là giọng đọc mẫu cho video của bạn.";
+    const r = await fetch("/api/tts-preview", {method: "POST", headers: headers(), body: JSON.stringify({...params(), text: sample})});
+    if(!r.ok) throw new Error((await r.json()).detail);
+    const a = $("previewAudio"); a.src = URL.createObjectURL(await r.blob()); a.classList.remove("hidden"); a.play();
+  } catch(e){ alert("Không nghe thử được: " + e.message); }
+  b.disabled = false; b.textContent = "▶ Nghe thử";
+};
+
+$("goBtn").onclick = async () => {
+  if(!$("text").value.trim()){ alert("Hãy nhập chủ đề hoặc kịch bản"); return; }
+  $("goBtn").disabled = true; $("result").classList.add("hidden");
+  $("status").classList.remove("hidden"); $("statusErr").textContent = ""; $("statusMsg").textContent = "Đang gửi…"; $("barFill").style.width = "2%";
+  const r = await fetch("/api/jobs", {method: "POST", headers: headers(), body: JSON.stringify(params())});
+  const j = await r.json();
+  if(!r.ok){ $("statusErr").textContent = j.detail; $("goBtn").disabled = false; return; }
+  track(j.id);
+};
+
+function show(j){
+  $("status").classList.remove("hidden");
+  $("barFill").style.width = Math.max(2, j.progress || 0) + "%";
+  $("statusMsg").textContent = j.message || "";
+  $("statusErr").textContent = j.status === "error" ? (j.error || "Lỗi không xác định") : "";
+  if(j.status === "done"){
+    $("result").classList.remove("hidden");
+    $("resTitle").textContent = (j.title || "Video") + (j.duration ? ` · ${j.duration}s` : "");
+    $("resVideo").src = j.video_url; $("dlBtn").href = j.video_url + "?download=1";
+    $("resScript").innerHTML = (j.narrations || []).map(n => `<li>${n.replace(/</g, "&lt;")}</li>`).join("");
+  }
+}
+
+function track(id){
+  clearInterval(polling);
+  const tick = async () => {
+    const j = await (await fetch("/api/jobs/" + id)).json();
+    show(j);
+    if(j.status === "done" || j.status === "error"){ clearInterval(polling); $("goBtn").disabled = false; loadHist(); }
+  };
+  tick(); polling = setInterval(tick, 2500);
+}
+
+async function loadHist(){
+  const list = await (await fetch("/api/jobs")).json();
+  if(!list.length) return;
+  const st = {done: "Xong", error: "Lỗi", running: "Đang tạo", queued: "Đang chờ"};
+  $("hist").innerHTML = list.map(j => `<li><span style="flex:1;cursor:pointer" onclick="track('${j.id}')">${(j.title || j.text).replace(/</g, "&lt;").slice(0, 60)}</span>
+    <span class="tag ${j.status}">${st[j.status] || j.status}</span>
+    ${j.video_url ? `<a class="btn ghost" href="${j.video_url}?download=1">⬇</a>` : ""}</li>`).join("");
+  const running = list.find(j => j.status === "running" || j.status === "queued");
+  if(running && !polling) track(running.id);
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+output
+temp
+.venv
+.git
+__pycache__
+config.yaml
