@@ -102,6 +102,29 @@ Mở http://localhost:8080/series:
    - Token lưu ở `output/facebook.json` trên máy chạy app (không đưa lên git). Cũng có thể đặt biến môi trường `FACEBOOK_ACCESS_TOKEN`.
    - Tag @người theo dõi không làm qua API được, phải thêm tay trong app Facebook.
 
+### Lấy token Facebook (làm 1 lần)
+
+Anh/chị phải là admin của page cần đăng.
+
+1. **Tạo app Facebook** (nếu đã có app, ví dụ `testpost`, thì bỏ qua bước này): vào https://developers.facebook.com/apps → **Create App** → chọn loại **Business** (hoặc "Other" → "Business") → đặt tên bất kỳ.
+2. **Lấy user token:** mở **Graph API Explorer** https://developers.facebook.com/tools/explorer/
+   - Ô **Meta App**: chọn app ở bước 1.
+   - Ô **User or Page**: chọn **User Token**.
+   - Mục **Permissions**: thêm 3 quyền `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`.
+   - Bấm **Generate Access Token**, đăng nhập rồi **tick đúng page** cần đăng (ví dụ page phim ma), bấm Tiếp tục / Lưu.
+   - Token này chỉ sống khoảng 1–2 giờ, nên làm tiếp bước 3.
+3. **Đổi sang token dài hạn:** mở **Access Token Debugger** https://developers.facebook.com/tools/debug/accesstoken/
+   - Dán token vừa lấy vào → **Debug** → kéo xuống cuối bấm **Extend Access Token** → copy token mới hiện ra (sống khoảng 60 ngày).
+4. **Kết nối trong app:** mở http://localhost:8080/series → phần **4. Facebook** → dán token dài hạn vào ô token → **Kết nối**.
+   - App tự lấy token của từng page. Token page lấy từ token dài hạn **không hết hạn**, nên sau này không cần dán lại.
+   - Nếu tài khoản quản lý nhiều page, chọn page ở ô **Page đăng bài**. Đổi page bất cứ lúc nào.
+
+Lưu ý:
+- Không gửi token qua chat, email, không đưa lên GitHub. App chỉ lưu token trong `output/facebook.json` trên máy chạy app.
+- Nếu app báo "Token không hợp lệ" hoặc đăng bị lỗi quyền (ví dụ đổi mật khẩu Facebook, gỡ quyền app, hoặc lâu không dùng ~90 ngày), làm lại bước 2–4.
+- Có thể thay bước 4 bằng biến môi trường: trên Windows mở cmd, gõ `set FACEBOOK_ACCESS_TOKEN=<token>` rồi chạy `run_windows.bat` trong cùng cửa sổ đó.
+- Kiểm tra token: dán vào Access Token Debugger, xem dòng **Type** (User hoặc Page), **Expires** và danh sách quyền.
+
 Kiểm thử: `pip install pytest && python -m pytest tests`
 
 ## Chạy trên Windows
