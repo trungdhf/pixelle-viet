@@ -145,6 +145,13 @@ function showScript(s) {
   const eps = (s.episodes || []).map((e, i) => `<li><b>Tập ${i + 1}: ${esc(e.title)}</b> – ${e.scenes.length} cảnh${e.learn ? ` · học: <i>${esc(e.learn.en)}</i>` : ""}</li>`).join("");
   $("outline").innerHTML = `<b style="font-size:15px">${esc(s.title)}</b> ${s.english ? '<span class="tag">có tiếng Anh</span>' : '<span class="tag">chỉ tiếng Việt</span>'}<br>${ch}<ol>${eps}</ol>`;
 }
+function fillForm(s) {
+  $("premise").value = "";
+  if (s.look && [...$("look").options].some(o => o.value === s.look)) $("look").value = s.look;
+  $("english").checked = !!s.english;
+  $("watermark").value = s.watermark || "";
+  $("n_eps").value = (s.episodes || []).length || $("n_eps").value;
+}
 function readScript() {
   try { return JSON.parse($("script").value); } catch (e) { throw new Error("JSON kịch bản bị lỗi: " + e.message); }
 }
@@ -234,7 +241,7 @@ async function loadHist() {
     <td><span class="tag ${j.status}">${STATE_VI[j.status] || j.status}</span></td><td><button class="btn ghost" data-id="${j.id}">Mở</button></td></tr>`).join("")
     : '<tr><td class="hint">Chưa có series nào.</td></tr>';
   $("hist").querySelectorAll("button").forEach(b => b.onclick = async () => {
-    const j = await api("/api/series/" + b.dataset.id); showScript(j.script); track(j.id);
+    const j = await api("/api/series/" + b.dataset.id); fillForm(j.script); showScript(j.script); track(j.id);
   });
 }
 
