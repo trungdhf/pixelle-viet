@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixelle Việt – Phim ngắn nhiều tập</title>
+<style>
+:root{--bg:#f5f6fb;--card:#fff;--line:#e3e6ef;--text:#1d2433;--muted:#6b7385;--pri:#e5484d;--pri2:#ff7a59;--ok:#1f9d55;--fb:#1877f2}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",sans-serif;background:var(--bg);color:var(--text)}
+header{background:linear-gradient(120deg,var(--pri),var(--pri2));color:#fff;padding:22px 20px 26px}
+header h1{margin:0;font-size:24px}header p{margin:6px 0 0;opacity:.92;font-size:14px}
+header a{color:#fff}
+main{max-width:1180px;margin:-14px auto 40px;padding:0 14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:980px){main{grid-template-columns:1fr}}
+.wide{grid-column:1/-1}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 2px 10px rgba(20,30,60,.04)}
+.card h2{font-size:16px;margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px}
+textarea,input[type=text],input[type=password],input[type=number],input[type=date],input[type=datetime-local],select{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;font-size:14px;background:#fbfcff}
+textarea{min-height:90px;resize:vertical}
+textarea.json{min-height:320px;font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+.btn{display:inline-flex;justify-content:center;align-items:center;gap:6px;border:0;border-radius:10px;padding:10px 14px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;font-size:14px}
+.btn.main{background:linear-gradient(120deg,var(--pri),var(--pri2));color:#fff}
+.btn.ghost{background:#eef0f6;color:var(--text);font-size:13px;padding:8px 11px}
+.btn.fb{background:var(--fb);color:#fff;font-size:13px;padding:8px 11px}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.hint{font-size:12px;color:var(--muted);margin-top:5px}
+.err{color:#c0262d;font-size:13px;white-space:pre-wrap}
+.bar{height:10px;background:#eef0f6;border-radius:6px;overflow:hidden;margin:10px 0 6px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--pri),var(--pri2));transition:width .4s}
+.check{display:flex;gap:8px;align-items:center;font-size:14px;margin-top:12px}
+.eps{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.ep{border:1px solid var(--line);border-radius:12px;padding:10px}
+.ep h3{font-size:14px;margin:0 0 6px}
+.ep video{width:100%;border-radius:8px;background:#000;max-height:420px}
+.ep img{width:100%;border-radius:8px;margin-top:6px}
+.refs{display:flex;gap:8px;flex-wrap:wrap}.refs figure{margin:0;text-align:center;font-size:12px}.refs img{height:150px;border-radius:8px}
+.tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#eef0f6;color:var(--muted);white-space:nowrap}
+.tag.done,.tag.scheduled,.tag.published{background:#e3f6ea;color:var(--ok)}.tag.error{background:#fde8e8;color:#c0262d}.tag.waiting,.tag.draft{background:#fff4d6;color:#8a5a00}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-top:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
+.outline{font-size:13px}.outline li{margin:3px 0}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎞️ Phim ngắn nhiều tập</h1>
+  <p>Ý tưởng → AI viết kịch bản cả series → ảnh người thật, giữ mặt nhân vật qua các tập → video từng tập → đăng / hẹn giờ lên Facebook. <a href="/">← Video đơn</a></p>
+</header>
+<main>
+  <section class="card">
+    <h2>📝 1. Ý tưởng phim</h2>
+    <label>Ý tưởng / cốt truyện</label>
+    <textarea id="premise" placeholder="VD: Vy, sinh viên, thuê căn biệt thự Pháp cổ ở Đà Lạt giá rẻ bất thường; đêm nào cũng có tiếng đàn và một cô bé áo trắng…"></textarea>
+    <div class="row">
+      <div><label>Số tập</label><input type="number" id="n_eps" value="6" min="1" max="12"></div>
+      <div><label>Số cảnh mỗi tập</label><input type="number" id="n_scenes" value="7" min="3" max="12"></div>
+      <div><label>Thể loại</label><select id="look"></select></div>
+    </div>
+    <label class="check"><input type="checkbox" id="english"> Dạy tiếng Anh trong phim (đếm ngược 3-2-1, thẻ học, 2 câu tương tự)</label>
+    <label>Chữ góc màn hình (tùy chọn, VD tên page)</label>
+    <input type="text" id="watermark" placeholder="Để trống nếu không cần">
+    <div id="pwBox" class="hidden"><label>Mật khẩu</label><input type="password" id="pw"></div>
+    <div class="row" style="margin-top:12px"><button class="btn main" id="writeBtn">✍️ Viết kịch bản</button></div>
+    <div id="writeMsg" class="hint"></div>
+  </section>
+
+  <section class="card">
+    <h2>📖 2. Kịch bản (sửa được trước khi làm video)</h2>
+    <div id="outline" class="outline hint">Chưa có kịch bản. Viết bằng AI ở bên trái, hoặc dán JSON kịch bản vào ô dưới.</div>
+    <details><summary style="cursor:pointer;font-size:13px;margin-top:8px">Sửa chi tiết (JSON)</summary>
+      <textarea id="script" class="json" spellcheck="false"></textarea>
+      <div class="hint">Trong mô tả cảnh (image), gọi nhân vật bằng đúng "key" để app dùng ảnh mẫu giữ mặt. Sửa cảnh nào thì chỉ cảnh đó được vẽ lại.</div>
+    </details>
+    <div class="row" style="margin-top:12px">
+      <button class="btn main" id="renderBtn">🎬 Làm video tất cả các tập</button>
+    </div>
+    <div class="row"><div><label>Hoặc chỉ làm lại tập (VD: 2,5)</label><input type="text" id="only"></div><div><button class="btn ghost" id="renderOnlyBtn">Làm lại các tập này</button></div></div>
+  </section>
+
+  <section class="card wide">
+    <h2>🎬 3. Video các tập <span id="seriesTitle" class="hint"></span></h2>
+    <div id="status" class="hidden"><div class="bar"><i id="barFill"></i></div><div id="statusMsg" style="font-size:14px"></div><div id="statusErr" class="err"></div></div>
+    <div class="refs" id="refs"></div>
+    <div class="row" style="margin:12px 0" id="bulkBox">
+      <div><label>Hẹn giờ cả series: ngày bắt đầu</label><input type="date" id="bulkDate"></div>
+      <div><label>Giờ đăng mỗi ngày</label><input type="text" id="bulkTimes" value="20:00" placeholder="06:00,12:00,19:00"></div>
+      <div><label>Múi giờ</label><select id="tz"><option value="7">Giờ Việt Nam (UTC+7)</option><option value="9">Giờ Nhật (UTC+9)</option></select></div>
+      <div><button class="btn fb" id="bulkBtn">📅 Hẹn giờ tất cả tập</button></div>
+    </div>
+    <div class="eps" id="eps"><div class="hint">Chưa có video.</div></div>
+    <h2 style="margin-top:20px">🕘 Các series đã làm</h2>
+    <table id="hist"></table>
+  </section>
+
+  <section class="card wide">
+    <h2>📘 4. Facebook</h2>
+    <div id="fbState" class="hint">Đang kiểm tra…</div>
+    <div id="fbConnect" class="row hidden">
+      <div style="flex:3"><label>Page access token (hoặc user token có quyền quản lý page). Token chỉ lưu trên máy chạy app.</label><input type="password" id="fbToken" autocomplete="off"></div>
+      <div><button class="btn fb" id="fbConnectBtn">Kết nối</button></div>
+    </div>
+    <div id="fbPages" class="row hidden">
+      <div style="flex:3"><label>Page đăng bài</label><select id="fbPage"></select></div>
+      <div><button class="btn ghost" id="fbChange">Đổi token</button></div>
+    </div>
+    <div class="hint">Facebook chỉ cho hẹn giờ trong khoảng 29 ngày tới. Nếu xa hơn, app tải lên dạng <b>bản nháp</b> ("chờ hẹn") và tự hẹn giờ khi tới hạn, miễn là app còn chạy. Tag @người theo dõi phải thêm tay trong app Facebook.</div>
+    <h3 style="font-size:14px;margin:16px 0 4px">Bài đã tải lên</h3>
+    <table id="posts"></table>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const pw = () => $("pw").value || localStorage.getItem("pv_pw") || "";
+const H = () => ({"Content-Type": "application/json", "x-app-password": pw()});
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let cur = null, poll = null;
+const STATE_VI = {queued:"Đang chờ", uploading:"Đang tải lên", scheduled:"Đã hẹn giờ", draft:"Bản nháp", waiting:"Nháp – chờ hẹn giờ", published:"Đã đăng", error:"Lỗi", running:"Đang làm", done:"Xong"};
+
+async function api(url, opt = {}) {
+  const r = await fetch(url, {headers: H(), ...opt});
+  if (r.status === 401) { $("pwBox").classList.remove("hidden"); throw new Error("Sai mật khẩu"); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail || r.statusText);
+  if ($("pw").value) localStorage.setItem("pv_pw", $("pw").value);
+  return j;
+}
+const post = (url, body) => api(url, {method: "POST", body: JSON.stringify(body || {})});
+
+function tsOf(date, time) {  // "YYYY-MM-DD", "HH:MM" in chosen UTC offset -> unix seconds
+  const [y, m, d] = date.split("-").map(Number), [hh, mm] = time.split(":").map(Number), tz = Number($("tz").value);
+  return Math.round(Date.UTC(y, m - 1, d, hh - tz, mm) / 1000);
+}
+function fmt(ts) {
+  if (!ts) return "";
+  const tz = Number($("tz").value), d = new Date((ts + tz * 3600) * 1000);
+  return d.toISOString().slice(0, 16).replace("T", " ") + ` (UTC+${tz})`;
+}
+
+function showScript(s) {
+  $("script").value = JSON.stringify(s, null, 1);
+  const ch = (s.characters || []).map(c => `<b>${esc(c.name)}</b> (${esc(c.key)}, ${esc(c.age)}): ${esc(c.look)}`).join("<br>");
+  const eps = (s.episodes || []).map((e, i) => `<li><b>Tập ${i + 1}: ${esc(e.title)}</b> – ${e.scenes.length} cảnh${e.learn ? ` · học: <i>${esc(e.learn.en)}</i>` : ""}</li>`).join("");
+  $("outline").innerHTML = `<b style="font-size:15px">${esc(s.title)}</b> ${s.english ? '<span class="tag">có tiếng Anh</span>' : '<span class="tag">chỉ tiếng Việt</span>'}<br>${ch}<ol>${eps}</ol>`;
+}
+function readScript() {
+  try { return JSON.parse($("script").value); } catch (e) { throw new Error("JSON kịch bản bị lỗi: " + e.message); }
+}
+
+$("writeBtn").onclick = async () => {
+  $("writeBtn").disabled = true; $("writeMsg").textContent = "AI đang viết kịch bản, khoảng 30–90 giây…";
+  try {
+    const s = await post("/api/series/script", {premise: $("premise").value, n_eps: $("n_eps").value, n_scenes: $("n_scenes").value,
+      look: $("look").value, english: $("english").checked, watermark: $("watermark").value});
+    showScript(s); cur = null; $("writeMsg").textContent = "Xong. Xem và sửa kịch bản ở bên phải.";
+  } catch (e) { $("writeMsg").textContent = "❌ " + e.message; }
+  $("writeBtn").disabled = false;
+};
+
+async function render(only) {
+  try {
+    const s = readScript();
+    s.watermark = $("watermark").value.trim() || s.watermark || "";
+    const j = await post("/api/series", {script: s, id: cur && cur.id, only});
+    track(j.id);
+  } catch (e) { alert(e.message); }
+}
+$("renderBtn").onclick = () => render([]);
+$("renderOnlyBtn").onclick = () => render($("only").value.split(/[ ,]+/).filter(Boolean).map(Number));
+
+function showSeries(j) {
+  cur = j;
+  $("seriesTitle").textContent = j.title ? "– " + j.title : "";
+  $("status").classList.remove("hidden");
+  $("barFill").style.width = (j.progress || 0) + "%";
+  $("statusMsg").textContent = `${STATE_VI[j.status] || j.status}: ${j.message || ""}`;
+  $("statusErr").textContent = j.error || "";
+  $("refs").innerHTML = (j.refs || []).map(r => `<figure><img src="${r.url}"><figcaption>${esc(r.name)}</figcaption></figure>`).join("");
+  $("eps").innerHTML = j.episodes.map(e => `<div class="ep" data-n="${e.n}">
+    <h3>Tập ${e.n}: ${esc(e.title)} <span class="tag ${e.status}">${STATE_VI[e.status] || e.status}</span></h3>
+    ${e.video_url ? `<video src="${e.video_url}" controls playsinline preload="metadata"></video>
+      <div class="hint">${e.duration || ""} giây · <a href="${e.video_url.split("?")[0]}?download=1">Tải về</a></div>
+      <details><summary class="hint" style="cursor:pointer">Xem tất cả cảnh (kiểm tra mặt nhân vật)</summary><img src="${e.sheet_url}"></details>
+      <label>Mô tả đăng Facebook</label><textarea class="cap">${esc(e.caption)}</textarea>
+      <div class="row" style="margin-top:6px"><div><input type="datetime-local" class="when"></div></div>
+      <div class="row" style="margin-top:6px">
+        <button class="btn fb" data-mode="now">Đăng ngay</button>
+        <button class="btn fb" data-mode="schedule">Hẹn giờ</button>
+        <button class="btn ghost" data-mode="draft">Lưu nháp</button>
+      </div>` : `<div class="err">${esc(e.error || "")}</div>`}
+  </div>`).join("");
+  $("eps").querySelectorAll("button[data-mode]").forEach(b => b.onclick = () => {
+    const box = b.closest(".ep"), n = Number(box.dataset.n), w = box.querySelector(".when").value;
+    if (b.dataset.mode === "schedule" && !w) return alert("Chọn ngày giờ đăng trước");
+    fbUpload(n, box.querySelector(".cap").value, b.dataset.mode, w ? tsOf(...w.split("T")) : null);
+  });
+}
+
+async function fbUpload(n, caption, mode, ts) {
+  const e = cur.episodes[n - 1];
+  try {
+    await post("/api/fb/posts", {video_url: e.video_url, caption, mode, ts, title: `${cur.title} – Tập ${n}`});
+    loadPosts();
+  } catch (err) { alert(`Tập ${n}: ${err.message}`); }
+}
+$("bulkBtn").onclick = async () => {
+  if (!cur) return alert("Chưa có series");
+  const times = $("bulkTimes").value.split(/[ ,]+/).filter(Boolean), date = $("bulkDate").value;
+  if (!date || !times.length) return alert("Chọn ngày bắt đầu và giờ đăng");
+  const eps = cur.episodes.filter(e => e.video_url);
+  if (!confirm(`Tải ${eps.length} tập lên Facebook và hẹn giờ, mỗi ngày ${times.length} tập lúc ${times.join(", ")}?`)) return;
+  const [y, m, d] = date.split("-").map(Number);
+  for (const [k, e] of eps.entries()) {
+    const day = new Date(Date.UTC(y, m - 1, d + Math.floor(k / times.length))).toISOString().slice(0, 10);
+    const cap = document.querySelector(`.ep[data-n="${e.n}"] .cap`).value;
+    await fbUpload(e.n, cap, "schedule", tsOf(day, times[k % times.length]));
+  }
+};
+
+function track(id) {
+  clearInterval(poll);
+  const tick = async () => {
+    const j = await api("/api/series/" + id);
+    showSeries(j);
+    if (j.status !== "running" && j.status !== "queued") { clearInterval(poll); loadHist(); }
+  };
+  tick(); poll = setInterval(tick, 4000);
+}
+async function loadHist() {
+  const list = await api("/api/series");
+  $("hist").innerHTML = list.length ? list.map(j => `<tr><td>${esc(j.title)}</td><td>${j.episodes.length} tập</td>
+    <td><span class="tag ${j.status}">${STATE_VI[j.status] || j.status}</span></td><td><button class="btn ghost" data-id="${j.id}">Mở</button></td></tr>`).join("")
+    : '<tr><td class="hint">Chưa có series nào.</td></tr>';
+  $("hist").querySelectorAll("button").forEach(b => b.onclick = async () => {
+    const j = await api("/api/series/" + b.dataset.id); showScript(j.script); track(j.id);
+  });
+}
+
+async function loadFb() {
+  try {
+    const f = await api("/api/fb");
+    $("fbConnect").classList.toggle("hidden", f.connected);
+    $("fbPages").classList.toggle("hidden", !f.connected);
+    $("fbState").innerHTML = f.connected ? `✅ Đã kết nối page <b>${esc(f.page_name)}</b>` : "Chưa kết nối page Facebook.";
+    $("fbPage").innerHTML = f.pages.map(p => `<option value="${p.id}" ${p.id === f.page_id ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+  } catch (e) { $("fbState").textContent = "❌ " + e.message; }
+}
+$("fbConnectBtn").onclick = async () => {
+  try { await post("/api/fb/connect", {token: $("fbToken").value}); $("fbToken").value = ""; loadFb(); }
+  catch (e) { alert(e.message); }
+};
+$("fbPage").onchange = async () => { await post("/api/fb/select", {page_id: $("fbPage").value}); loadFb(); };
+$("fbChange").onclick = () => { $("fbConnect").classList.remove("hidden"); };
+
+async function loadPosts() {
+  try {
+    const ps = await api("/api/fb/posts");
+    $("posts").innerHTML = ps.length ? "<tr><th>Video</th><th>Trạng thái</th><th>Giờ hẹn</th><th></th></tr>" + ps.map(p => `<tr>
+      <td>${esc(p.title)}${p.link ? ` · <a href="${p.link}" target="_blank">mở</a>` : ""}</td>
+      <td><span class="tag ${p.state}">${STATE_VI[p.state] || p.state}</span> ${p.fb && p.fb.video_status ? `<span class="hint">FB: ${esc(p.fb.video_status)}</span>` : ""}<div class="err">${esc(p.error)}</div></td>
+      <td>${fmt(p.ts)}</td>
+      <td><button class="btn ghost" data-r="${p.id}">Kiểm tra</button> ${p.video_id && p.state !== "published" ? `<button class="btn ghost" data-s="${p.id}">Đổi giờ</button>` : ""}</td></tr>`).join("")
+      : '<tr><td class="hint">Chưa có bài nào.</td></tr>';
+    $("posts").querySelectorAll("[data-r]").forEach(b => b.onclick = async () => {
+      try { await post(`/api/fb/posts/${b.dataset.r}/refresh`); } catch (e) { alert(e.message); } loadPosts();
+    });
+    $("posts").querySelectorAll("[data-s]").forEach(b => b.onclick = async () => {
+      const v = prompt(`Giờ đăng mới (YYYY-MM-DD HH:MM, UTC+${$("tz").value})`);
+      if (!v) return;
+      try { await post(`/api/fb/posts/${b.dataset.s}/schedule`, {ts: tsOf(...v.trim().split(/[ T]+/))}); } catch (e) { alert(e.message); }
+      loadPosts();
+    });
+  } catch (e) { $("posts").innerHTML = `<tr><td class="err">${esc(e.message)}</td></tr>`; }
+}
+
+(async () => {
+  const o = await api("/api/series/options");
+  $("look").innerHTML = o.looks.map(l => `<option value="${l.key}">${esc(l.name)}</option>`).join("");
+  if (o.password_required) $("pwBox").classList.remove("hidden");
+  $("bulkDate").value = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  loadHist().catch(() => {}); loadFb(); loadPosts();
+  setInterval(loadPosts, 20000);
+})();
+</script>
+</body>
+</html>
