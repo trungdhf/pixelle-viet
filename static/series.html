@@ -36,7 +36,7 @@ textarea.json{min-height:320px;font-family:ui-monospace,Consolas,monospace;font-
 .ep h3{font-size:14px;margin:0 0 6px}
 .ep video{width:100%;border-radius:8px;background:#000;max-height:420px}
 .ep img{width:100%;border-radius:8px;margin-top:6px}
-.refs{display:flex;gap:8px;flex-wrap:wrap}.refs figure{margin:0;text-align:center;font-size:12px}.refs img{height:150px;border-radius:8px}
+.chars .ch{display:flex;gap:10px;align-items:flex-start;border-top:1px solid #e5e7eb;padding-top:8px;margin-top:8px}.chars figure{margin:0;text-align:center;font-size:12px;min-width:90px}.chars img{height:120px;border-radius:8px}.chars .noimg{height:120px;width:90px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;border-radius:8px;font-size:11px;color:#6b7280}.cands{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.cands img{cursor:pointer}.cands img:hover{outline:3px solid #f59e0b}.refs{display:flex;gap:8px;flex-wrap:wrap}.refs figure{margin:0;text-align:center;font-size:12px}.refs img{height:150px;border-radius:8px}
 .tag{font-size:11px;padding:2px 7px;border-radius:20px;background:#eef0f6;color:var(--muted);white-space:nowrap}
 .tag.done,.tag.scheduled,.tag.published{background:#e3f6ea;color:var(--ok)}.tag.error{background:#fde8e8;color:#c0262d}.tag.waiting,.tag.draft{background:#fff4d6;color:#8a5a00}
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-top:1px solid var(--line);padding:7px 5px;text-align:left;vertical-align:top}
@@ -70,6 +70,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-top:1px so
   <section class="card">
     <h2>📖 2. Kịch bản (sửa được trước khi làm video)</h2>
     <div id="outline" class="outline hint">Chưa có kịch bản. Viết bằng AI ở bên trái, hoặc dán JSON kịch bản vào ô dưới.</div>
+    <div id="chars" class="chars"></div>
     <details><summary style="cursor:pointer;font-size:13px;margin-top:8px">Sửa chi tiết (JSON)</summary>
       <textarea id="script" class="json" spellcheck="false"></textarea>
       <div class="hint">Trong mô tả cảnh (image), gọi nhân vật bằng đúng "key" để app dùng ảnh mẫu giữ mặt. Sửa cảnh nào thì chỉ cảnh đó được vẽ lại.</div>
@@ -143,8 +144,54 @@ function showScript(s) {
   $("script").value = JSON.stringify(s, null, 1);
   const ch = (s.characters || []).map(c => `<b>${esc(c.name)}</b> (${esc(c.key)}, ${esc(c.age)}): ${esc(c.look)}`).join("<br>");
   const eps = (s.episodes || []).map((e, i) => `<li><b>Tập ${i + 1}: ${esc(e.title)}</b> – ${e.scenes.length} cảnh${e.learn ? ` · học: <i>${esc(e.learn.en)}</i>` : ""}</li>`).join("");
+  for (const k in cands) delete cands[k];
   $("outline").innerHTML = `<b style="font-size:15px">${esc(s.title)}</b> ${s.english ? '<span class="tag">có tiếng Anh</span>' : '<span class="tag">chỉ tiếng Việt</span>'}<br>${ch}<ol>${eps}</ol>`;
+  renderChars();
 }
+const cands = {};
+function renderChars() {
+  let s; try { s = JSON.parse($("script").value); } catch (e) { return; }
+  const refs = Object.fromEntries(((cur && cur.refs) || []).map(r => [r.key, r]));
+  const chars = s.characters || [];
+  $("chars").innerHTML = chars.length ? '<label>Ảnh nhân vật: chọn trước khi làm video, hoặc để trống cho AI tự vẽ</label>' + chars.map(c => {
+    const r = refs[c.key];
+    return `<div class="ch" data-key="${esc(c.key)}">
+      <figure>${r ? `<img src="${r.url}">` : '<div class="noimg">AI tự vẽ<br>khi làm video</div>'}<figcaption><b>${esc(c.name)}</b>${r && r.fixed ? "<br>✔ đã chọn" : ""}</figcaption></figure>
+      <div><div class="row">
+        <button class="btn ghost" data-act="gen">🎲 Vẽ 3 ảnh để chọn</button>
+        <button class="btn ghost" data-act="up">📤 Tải ảnh lên</button>
+        ${r ? '<button class="btn ghost" data-act="reset">🔄 Để AI vẽ lại</button>' : ""}
+        <input type="file" accept="image/*" class="hidden">
+      </div><div class="hint msg">${(cands[c.key] || []).length ? "Bấm vào ảnh muốn dùng:" : ""}</div>
+      <div class="cands">${(cands[c.key] || []).map(u => `<img src="${u}" title="Bấm để chọn ảnh này">`).join("")}</div></div>
+    </div>`;
+  }).join("") : "";
+  $("chars").querySelectorAll(".ch").forEach(box => {
+    const key = box.dataset.key, msg = box.querySelector(".msg"), file = box.querySelector("input[type=file]");
+    const run = async (label, fn) => {
+      box.querySelectorAll("button").forEach(b => b.disabled = true); msg.textContent = label;
+      try { await fn(); } catch (e) { msg.textContent = "❌ " + e.message; box.querySelectorAll("button").forEach(b => b.disabled = false); }
+    };
+    const pick = body => run("Đang lưu ảnh…", async () => {
+      const j = await post("/api/series/char/pick", {id: cur && cur.id, script: readScript(), key, ...body});
+      delete cands[key]; showSeries(j);
+    });
+    box.querySelector('[data-act="gen"]').onclick = () => run("Đang vẽ 3 ảnh, khoảng 30–90 giây…", async () => {
+      const j = await post("/api/series/char/options", {id: cur && cur.id, script: readScript(), key, n: 3});
+      cands[key] = j.options.map(u => u + "?v=" + Date.now());
+      showSeries(await api("/api/series/" + j.id));
+    });
+    box.querySelector('[data-act="up"]').onclick = () => file.click();
+    file.onchange = () => {
+      const f = file.files[0]; if (!f) return;
+      const rd = new FileReader(); rd.onload = () => pick({data: rd.result}); rd.readAsDataURL(f);
+    };
+    const rs = box.querySelector('[data-act="reset"]');
+    if (rs) rs.onclick = () => run("Đang bỏ ảnh…", async () => showSeries(await post("/api/series/char/reset", {id: cur.id, key})));
+    box.querySelectorAll(".cands img").forEach(im => im.onclick = () => pick({url: im.getAttribute("src")}));
+  });
+}
+$("script").addEventListener("change", renderChars);
 function fillForm(s) {
   $("premise").value = "";
   if (s.look && [...$("look").options].some(o => o.value === s.look)) $("look").value = s.look;
@@ -163,7 +210,7 @@ $("writeBtn").onclick = async () => {
   try {
     const s = await post("/api/series/script", {premise: $("premise").value, n_eps: $("n_eps").value, n_scenes: $("n_scenes").value,
       look: $("look").value, english: $("english").checked, watermark: $("watermark").value});
-    showScript(s); cur = null; $("writeMsg").textContent = "Xong. Xem và sửa kịch bản ở bên phải.";
+    cur = null; showScript(s); $("writeMsg").textContent = "Xong. Xem và sửa kịch bản ở bên phải.";
   } catch (e) { $("writeMsg").textContent = "❌ " + e.message; }
   $("writeBtn").disabled = false;
 };
@@ -187,6 +234,7 @@ function showSeries(j) {
   $("statusMsg").textContent = `${STATE_VI[j.status] || j.status}: ${j.message || ""}`;
   $("statusErr").textContent = j.error || "";
   $("refs").innerHTML = (j.refs || []).map(r => `<figure><img src="${r.url}"><figcaption>${esc(r.name)}</figcaption></figure>`).join("");
+  renderChars();
   $("eps").innerHTML = j.episodes.map(e => `<div class="ep" data-n="${e.n}">
     <h3>Tập ${e.n}: ${esc(e.title)} <span class="tag ${e.status}">${STATE_VI[e.status] || e.status}</span></h3>
     ${e.video_url ? `<video src="${e.video_url}" controls playsinline preload="metadata"></video>
@@ -243,7 +291,7 @@ async function loadHist() {
     <td><span class="tag ${j.status}">${STATE_VI[j.status] || j.status}</span></td><td><button class="btn ghost" data-id="${j.id}">Mở</button></td></tr>`).join("")
     : '<tr><td class="hint">Chưa có series nào.</td></tr>';
   $("hist").querySelectorAll("button").forEach(b => b.onclick = async () => {
-    const j = await api("/api/series/" + b.dataset.id); fillForm(j.script); showScript(j.script); track(j.id);
+    const j = await api("/api/series/" + b.dataset.id); cur = null; fillForm(j.script); showScript(j.script); track(j.id);
   });
 }
 

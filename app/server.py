@@ -1,7 +1,9 @@
 """Pixelle Việt: Vietnamese web UI over the Pixelle-Video pipeline, powered by Google Vertex AI."""
 import asyncio
+import base64
 import json
 import os
+import re
 import time
 import traceback
 import uuid
@@ -354,7 +356,9 @@ async def create_series(req: Request):
         script = drama.normalize(p.get("script") or {})
     except Exception as e:
         raise HTTPException(400, f"Kịch bản không hợp lệ: {e}")
-    sid = p.get("id") if p.get("id") in series else time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+    sid = p.get("id") if p.get("id") in series else _new_id()
+    if series.get(sid, {}).get("status") in ("running", "queued"):
+        raise HTTPException(409, "Series này đang làm video, chờ xong đã")
     n = len(script["episodes"])
     only = [int(x) for x in (p.get("only") or []) if 1 <= int(x) <= n] or list(range(1, n + 1))
     old = series.get(sid, {}).get("episodes") or []
@@ -362,10 +366,101 @@ async def create_series(req: Request):
     for i, e in enumerate(eps):
         e.update(title=script["episodes"][i].get("title", ""), caption=script["episodes"][i].get("caption", ""))
     series[sid] = {"id": sid, "status": "queued", "progress": 0, "message": "Đang chờ tới lượt…", "created": time.time(),
-                   "title": script.get("title", ""), "script": script, "episodes": eps, "only": only, "refs": []}
+                   "title": script.get("title", ""), "script": script, "episodes": eps, "only": only,
+                   "refs": series.get(sid, {}).get("refs", [])}
     _save_series()
     asyncio.create_task(_run_series(sid))
     return series[sid]
+
+
+def _new_id() -> str:
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+
+
+def _refs(job: dict) -> list[dict]:
+    d, out = SERIES_DIR / job["id"] / "refs", []
+    for c in job["script"].get("characters", []):
+        f = d / f"{c['key']}.png"
+        if f.exists():
+            out.append({"key": c["key"], "name": c["name"], "url": _out_url(f) + f"?v={f.stat().st_mtime_ns}",
+                        "fixed": (d / f"{c['key']}.fixed").exists()})
+    return out
+
+
+def _char_job(p: dict) -> tuple[dict, dict, Path]:
+    """Series (a draft is created if needed) + character + refs dir for the character-photo endpoints."""
+    script = p.get("script")
+    if script is not None:
+        try:
+            script = drama.normalize(script)
+        except Exception as e:
+            raise HTTPException(400, f"Kịch bản không hợp lệ: {e}")
+    job = series.get(p.get("id"))
+    if job and job["status"] in ("running", "queued"):
+        raise HTTPException(409, "Đang làm video, chờ xong rồi đổi ảnh nhân vật")
+    if job is None:
+        if script is None:
+            raise HTTPException(400, "Chưa có kịch bản")
+        sid = _new_id()
+        job = series[sid] = {"id": sid, "status": "draft", "progress": 0, "message": "Chưa làm video", "created": time.time(),
+                             "title": "", "script": script, "only": [], "refs": [],
+                             "episodes": [{"n": i + 1, "status": "draft", "title": e.get("title", ""), "caption": e.get("caption", "")}
+                                          for i, e in enumerate(script["episodes"])]}
+    if script is not None:
+        job["script"] = script
+    job["title"] = job["script"].get("title", "")
+    key = str(p.get("key") or "")
+    c = next((c for c in job["script"]["characters"] if c["key"] == key), None)
+    if c is None or not re.fullmatch(r"[\w\- ]+", key):
+        raise HTTPException(400, "Không có nhân vật này trong kịch bản")
+    return job, c, SERIES_DIR / job["id"] / "refs"
+
+
+@app.post("/api/series/char/options")
+async def char_options(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    job, c, refs = _char_job(p)
+    _save_series()
+    try:
+        files = await drama.ref_options(c, refs, max(1, min(int(p.get("n") or 3), 4)))
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, f"Không vẽ được ảnh nhân vật: {e}")
+    return {"id": job["id"], "options": [_out_url(f) for f in files]}
+
+
+@app.post("/api/series/char/pick")
+async def char_pick(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    job, c, refs = _char_job(p)
+    if p.get("data"):
+        raw = str(p["data"]).split(",", 1)[-1]
+        if len(raw) > 20_000_000:
+            raise HTTPException(400, "Ảnh quá lớn (tối đa ~15MB)")
+        src = base64.b64decode(raw)
+    else:
+        src = _out_file(p.get("url") or "")
+        if src.parent != (refs / "cand").resolve():
+            raise HTTPException(400, "Ảnh không thuộc series này")
+    try:
+        drama.set_ref(c, refs, src)
+    except Exception as e:
+        raise HTTPException(400, f"Không đọc được ảnh: {e}")
+    job["refs"] = _refs(job)
+    _save_series()
+    return job
+
+
+@app.post("/api/series/char/reset")
+async def char_reset(req: Request):
+    _check_pw(req)
+    job, c, refs = _char_job(await req.json())
+    drama.reset_ref(c, refs)
+    job["refs"] = _refs(job)
+    _save_series()
+    return job
 
 
 @app.get("/api/series")
@@ -388,7 +483,7 @@ async def _run_series(sid: str):
         _save_series()
         try:
             await asyncio.gather(*[drama.make_ref(c, d / "refs") for c in s["characters"]])
-            job["refs"] = [{"key": c["key"], "name": c["name"], "url": _out_url(d / "refs" / f"{c['key']}.png")} for c in s["characters"]]
+            job["refs"] = _refs(job)
             for k, n in enumerate(job["only"]):
                 ep = job["episodes"][n - 1]
                 ep.update(status="running", error="")

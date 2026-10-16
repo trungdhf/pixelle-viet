@@ -7,9 +7,11 @@ import json
 import os
 import re
 import subprocess
+import time
+from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from app import tts, vertex
 
@@ -153,16 +155,48 @@ async def _image(parts: list, out: Path, ratio="9:16"):
     raise RuntimeError("Vertex không trả về ảnh (có thể bị chặn nội dung) – hãy sửa mô tả cảnh")
 
 
+REF_PROMPT = ("Photorealistic full-body photo of ONE real person standing and facing the camera, neutral light grey "
+              "studio background, natural skin texture, realistic lighting. NOT anime, NOT cartoon, NOT 3D render. "
+              "Exactly one person, no text. Person: ")
+
+
 async def make_ref(c: dict, refs: Path):
     out, look = refs / f"{c['key']}.png", refs / f"{c['key']}.txt"
-    if out.exists() and (not look.exists() or look.read_text(encoding="utf-8") == c["look"]):
+    fixed = (refs / f"{c['key']}.fixed").exists()
+    if out.exists() and (fixed or not look.exists() or look.read_text(encoding="utf-8") == c["look"]):
         return
     refs.mkdir(parents=True, exist_ok=True)
     out.unlink(missing_ok=True)
     look.write_text(c["look"], encoding="utf-8")
-    await _image([{"text": "Photorealistic full-body photo of ONE real person standing and facing the camera, neutral light grey "
-                           "studio background, natural skin texture, realistic lighting. NOT anime, NOT cartoon, NOT 3D render. "
-                           "Exactly one person, no text. Person: " + c["look"]}], out)
+    await _image([{"text": REF_PROMPT + c["look"]}], out)
+
+
+async def ref_options(c: dict, refs: Path, n: int = 3) -> list[Path]:
+    """Draw n candidate reference photos for the user to pick from."""
+    cand = refs / "cand"
+    cand.mkdir(parents=True, exist_ok=True)
+    outs = [cand / f"{c['key']}_{int(time.time())}_{i}.png" for i in range(n)]
+    res = await asyncio.gather(*[_image([{"text": REF_PROMPT + c["look"]}], o) for o in outs], return_exceptions=True)
+    ok = [o for o in outs if o.exists()]
+    if not ok:
+        raise next((r for r in res if isinstance(r, Exception)), RuntimeError("Không vẽ được ảnh"))
+    return ok
+
+
+def set_ref(c: dict, refs: Path, src: bytes | Path):
+    """Use a picked/uploaded photo as the character's fixed reference."""
+    im = Image.open(BytesIO(src) if isinstance(src, bytes) else src)
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    im.thumbnail((1536, 1536))
+    refs.mkdir(parents=True, exist_ok=True)
+    im.save(refs / f"{c['key']}.png")
+    (refs / f"{c['key']}.txt").write_text(c["look"], encoding="utf-8")
+    (refs / f"{c['key']}.fixed").write_text("1")
+
+
+def reset_ref(c: dict, refs: Path):
+    for ext in ("png", "fixed", "txt"):
+        (refs / f"{c['key']}.{ext}").unlink(missing_ok=True)
 
 
 def named_in(prompt: str, keys: list[str]) -> list[str]:

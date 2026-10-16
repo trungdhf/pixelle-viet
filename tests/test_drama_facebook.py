@@ -98,3 +98,25 @@ def test_new_post_rejects_too_soon(tmp_path):
     import time
     with pytest.raises(facebook.FBError):
         fb.new_post(str(vid), "c", "schedule", int(time.time()) + 30)
+
+
+def test_picked_ref_is_kept(tmp_path, monkeypatch):
+    from PIL import Image
+    calls = []
+
+    async def fake_image(parts, out, ratio="9:16"):
+        calls.append(out)
+        Image.new("RGB", (8, 8)).save(out)
+
+    monkeypatch.setattr(drama, "_image", fake_image)
+    c = {"key": "Vy", "name": "Vy", "look": "a"}
+    src = tmp_path / "me.png"
+    Image.new("RGB", (40, 60), "red").save(src)
+    drama.set_ref(c, tmp_path, src)
+    asyncio.run(drama.make_ref({**c, "look": "changed"}, tmp_path))
+    assert not calls and Image.open(tmp_path / "Vy.png").size == (40, 60)
+    drama.reset_ref(c, tmp_path)
+    asyncio.run(drama.make_ref(c, tmp_path))
+    assert len(calls) == 1
+    opts = asyncio.run(drama.ref_options(c, tmp_path, 3))
+    assert len(opts) == 3 and all(o.parent == tmp_path / "cand" for o in opts)
