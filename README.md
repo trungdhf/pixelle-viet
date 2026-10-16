@@ -96,6 +96,7 @@ Mở http://localhost:8080/series:
 
 1. **Ý tưởng:** nhập cốt truyện, số tập, số cảnh, thể loại (tình cảm, hài, lãng mạn, kinh dị). Tick **"Dạy tiếng Anh"** nếu muốn mỗi tập có đếm ngược 3-2-1, thẻ "Học từ tập này" và 2 câu tương tự. Bỏ tick thì phim chỉ có tiếng Việt.
 2. **Kịch bản:** AI (Vertex Gemini) viết cả series ra JSON, có nhân vật cố định. Sửa được trước khi làm video.
+   - **Ảnh nhân vật:** dưới dàn ý, mỗi nhân vật có nút **Vẽ 3 ảnh để chọn** (bấm vào ảnh muốn dùng), **Tải ảnh lên** (dùng ảnh có sẵn) và **Để AI vẽ lại**. Ảnh đã chọn được giữ cố định cho mọi tập, kể cả khi sửa mô tả. Nhân vật chưa chọn ảnh thì AI tự vẽ khi làm video.
 3. **Video:** app vẽ ảnh mẫu cho từng nhân vật, rồi vẽ từng cảnh (ảnh người thật, dùng ảnh mẫu để giữ mặt), đọc thoại bằng Gemini TTS (mỗi nhân vật 1 giọng), dựng MP4 dọc 1080x1920. Mỗi tập có 1 ảnh tổng hợp các cảnh để kiểm tra. Sửa kịch bản rồi làm lại thì chỉ cảnh bị sửa mới được vẽ lại.
 4. **Facebook:** dán Page access token (hoặc user token có quyền `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`) rồi chọn page. Mỗi tập có nút **Đăng ngay / Hẹn giờ / Lưu nháp**, hoặc dùng **Hẹn giờ tất cả tập** (VD `06:00,12:00,19:00`, giờ VN hoặc giờ Nhật).
    - Facebook chỉ cho hẹn giờ Reel trong khoảng 29 ngày tới. Nếu xa hơn, app tải lên dạng bản nháp (trạng thái "Nháp – chờ hẹn giờ") và tự hẹn giờ khi tới hạn, miễn là app còn chạy.
