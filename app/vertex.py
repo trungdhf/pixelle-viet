@@ -7,7 +7,14 @@ import time
 import httpx
 import jwt
 
-_SA = json.loads(os.environ["GCP_SA_KEY_JSON"]) if os.environ.get("GCP_SA_KEY_JSON") else None
+_KEY_FILE = os.environ.get("GCP_SA_KEY_FILE") or os.path.join(os.path.dirname(os.path.dirname(__file__)), "service-account.json")
+if os.environ.get("GCP_SA_KEY_JSON"):
+    _SA = json.loads(os.environ["GCP_SA_KEY_JSON"])
+elif os.path.isfile(_KEY_FILE):
+    with open(_KEY_FILE, encoding="utf-8") as f:
+        _SA = json.load(f)
+else:
+    _SA = None
 _tok = {"v": None, "exp": 0.0}
 _META = "http://metadata.google.internal/computeMetadata/v1"
 

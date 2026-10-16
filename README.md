@@ -89,3 +89,54 @@ cd pixelle-viet && git pull
 | `IMAGE_MODEL` | `gemini-3.1-flash-image` | Model vẽ ảnh |
 | `ELEVENLABS_API_KEY` | – | Key ElevenLabs |
 | `APP_PASSWORD` | – | Mật khẩu web (để trống = không cần) |
+
+## Phim ngắn nhiều tập + đăng Facebook (`/series`)
+
+Mở http://localhost:8080/series:
+
+1. **Ý tưởng:** nhập cốt truyện, số tập, số cảnh, thể loại (tình cảm, hài, lãng mạn, kinh dị). Tick **"Dạy tiếng Anh"** nếu muốn mỗi tập có đếm ngược 3-2-1, thẻ "Học từ tập này" và 2 câu tương tự. Bỏ tick thì phim chỉ có tiếng Việt.
+2. **Kịch bản:** AI (Vertex Gemini) viết cả series ra JSON, có nhân vật cố định. Sửa được trước khi làm video.
+   - **Ảnh nhân vật:** dưới dàn ý, mỗi nhân vật có nút **Vẽ 3 ảnh để chọn** (bấm vào ảnh muốn dùng), **Tải ảnh lên** (dùng ảnh có sẵn) và **Để AI vẽ lại**. Ảnh đã chọn được giữ cố định cho mọi tập, kể cả khi sửa mô tả. Nhân vật chưa chọn ảnh thì AI tự vẽ khi làm video.
+3. **Video:** app vẽ ảnh mẫu cho từng nhân vật, rồi vẽ từng cảnh (ảnh người thật, dùng ảnh mẫu để giữ mặt), đọc thoại bằng Gemini TTS (mỗi nhân vật 1 giọng), dựng MP4 dọc 1080x1920. Mỗi tập có 1 ảnh tổng hợp các cảnh để kiểm tra. Sửa kịch bản rồi làm lại thì chỉ cảnh bị sửa mới được vẽ lại.
+4. **Facebook:** dán Page access token (hoặc user token có quyền `pages_manage_posts`, `pages_read_engagement`, `pages_show_list`) rồi chọn page. Mỗi tập có nút **Đăng ngay / Hẹn giờ / Lưu nháp**, hoặc dùng **Hẹn giờ tất cả tập** (VD `06:00,12:00,19:00`, giờ VN hoặc giờ Nhật).
+   - Facebook chỉ cho hẹn giờ Reel trong khoảng 29 ngày tới. Nếu xa hơn, app tải lên dạng bản nháp (trạng thái "Nháp – chờ hẹn giờ") và tự hẹn giờ khi tới hạn, miễn là app còn chạy.
+   - Token lưu ở `output/facebook.json` trên máy chạy app (không đưa lên git). Cũng có thể đặt biến môi trường `FACEBOOK_ACCESS_TOKEN`.
+   - Tag @người theo dõi không làm qua API được, phải thêm tay trong app Facebook.
+
+### Lấy token Facebook (làm 1 lần)
+
+Anh/chị phải là admin của page cần đăng.
+
+1. **Tạo app Facebook** (nếu đã có app, ví dụ `testpost`, thì bỏ qua bước này): vào https://developers.facebook.com/apps → **Create App** → chọn loại **Business** (hoặc "Other" → "Business") → đặt tên bất kỳ.
+2. **Lấy user token:** mở **Graph API Explorer** https://developers.facebook.com/tools/explorer/
+   - Ô **Meta App**: chọn app ở bước 1.
+   - Ô **User or Page**: chọn **User Token**.
+   - Mục **Permissions**: thêm 3 quyền `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`.
+   - Bấm **Generate Access Token**, đăng nhập rồi **tick đúng page** cần đăng (ví dụ page phim ma), bấm Tiếp tục / Lưu.
+   - Token này chỉ sống khoảng 1–2 giờ, nên làm tiếp bước 3.
+3. **Đổi sang token dài hạn:** mở **Access Token Debugger** https://developers.facebook.com/tools/debug/accesstoken/
+   - Dán token vừa lấy vào → **Debug** → kéo xuống cuối bấm **Extend Access Token** → copy token mới hiện ra (sống khoảng 60 ngày).
+4. **Kết nối trong app:** mở http://localhost:8080/series → phần **4. Facebook** → dán token dài hạn vào ô token → **Kết nối**.
+   - App tự lấy token của từng page. Token page lấy từ token dài hạn **không hết hạn**, nên sau này không cần dán lại.
+   - Nếu tài khoản quản lý nhiều page, chọn page ở ô **Page đăng bài**. Đổi page bất cứ lúc nào.
+
+Lưu ý:
+- Không gửi token qua chat, email, không đưa lên GitHub. App chỉ lưu token trong `output/facebook.json` trên máy chạy app.
+- Nếu app báo "Token không hợp lệ" hoặc đăng bị lỗi quyền (ví dụ đổi mật khẩu Facebook, gỡ quyền app, hoặc lâu không dùng ~90 ngày), làm lại bước 2–4.
+- Có thể thay bước 4 bằng biến môi trường: trên Windows mở cmd, gõ `set FACEBOOK_ACCESS_TOKEN=<token>` rồi chạy `run_windows.bat` trong cùng cửa sổ đó.
+- Kiểm tra token: dán vào Access Token Debugger, xem dòng **Type** (User hoặc Page), **Expires** và danh sách quyền.
+
+Kiểm thử: `pip install pytest && python -m pytest tests`
+
+## Chạy trên Windows
+
+1. Cài **Python 3.12** (python.org, tick "Add python.exe to PATH"), **Git**, và **ffmpeg**: mở cmd và chạy `winget install Gyan.FFmpeg`.
+2. Tải code và đặt key Google Cloud:
+   ```bat
+   git clone https://github.com/trungdhf/pixelle-viet
+   cd pixelle-viet
+   ```
+   Chép file key service account (quyền `roles/aiplatform.user`) vào thư mục `pixelle-viet`, đặt tên `service-account.json`.
+3. Nhấp đúp `run_windows.bat`. Lần đầu script tự tạo `.venv` và cài thư viện, mất vài phút. Sau đó mở http://localhost:8080/series
+   - Tùy chọn: trước khi chạy, mở cmd và gõ `set ELEVENLABS_API_KEY=...` (giọng ElevenLabs cho video đơn) hoặc `set APP_PASSWORD=...`.
+

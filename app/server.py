@@ -1,7 +1,9 @@
 """Pixelle Việt: Vietnamese web UI over the Pixelle-Video pipeline, powered by Google Vertex AI."""
 import asyncio
+import base64
 import json
 import os
+import re
 import time
 import traceback
 import uuid
@@ -45,7 +47,8 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from app import tts, vertex
+from app import drama, tts, vertex
+from app import facebook as fbmod
 from pixelle_video.services.tts_service import TTSService
 
 
@@ -69,6 +72,16 @@ for j in jobs.values():
         j.update(status="error", error="Máy chủ khởi động lại khi đang tạo video")
 run_lock = asyncio.Semaphore(1)
 img_sem = asyncio.Semaphore(2)
+SERIES_DIR = OUTPUT / "series"
+SERIES_FILE = OUTPUT / "series.json"
+series: dict[str, dict] = json.loads(SERIES_FILE.read_text()) if SERIES_FILE.exists() else {}
+for j in series.values():
+    if j["status"] in ("queued", "running"):
+        j.update(status="error", error="Máy chủ khởi động lại khi đang tạo phim", message="Lỗi")
+fb = fbmod.Facebook(OUTPUT / "facebook.json")
+for p_ in fb.state["posts"].values():
+    if p_["state"] in ("queued", "uploading"):
+        p_.update(state="error", error="Máy chủ khởi động lại khi đang tải lên")
 
 TEMPLATE_NAMES = {
     "image_default": "Mặc định", "image_modern": "Hiện đại", "image_elegant": "Thanh lịch",
@@ -131,7 +144,10 @@ def _check_pw(req: Request):
 @asynccontextmanager
 async def lifespan(_app):
     await pixelle_video.initialize()
+    await fb.ensure_env()
+    retry = asyncio.create_task(fb.retry_loop())
     yield
+    retry.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -287,6 +303,291 @@ async def _run_job(jid: str):
             logger.error(traceback.format_exc())
             job.update(status="error", error=str(e)[:500], message="Lỗi")
         _save_jobs()
+
+
+# ---------- multi-episode series ----------
+def _save_series():
+    SERIES_FILE.write_text(json.dumps(series, ensure_ascii=False, indent=1))
+
+
+def _out_url(p: Path) -> str:
+    return "/output/" + p.resolve().relative_to(OUTPUT.resolve()).as_posix()
+
+
+def _out_file(url: str) -> Path:
+    f = (OUTPUT / url.split("/output/", 1)[-1].split("?")[0]).resolve()
+    if not f.is_file() or OUTPUT.resolve() not in f.parents:
+        raise HTTPException(400, "Không tìm thấy file video")
+    return f
+
+
+@app.get("/series")
+async def series_page():
+    return FileResponse(ROOT / "static" / "series.html")
+
+
+@app.get("/api/series/options")
+async def series_options():
+    return {"looks": [{"key": k, "name": v[0]} for k, v in drama.LOOKS.items()], "password_required": bool(APP_PASSWORD)}
+
+
+@app.post("/api/series/script")
+async def series_script(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    premise = (p.get("premise") or "").strip()
+    if not premise:
+        raise HTTPException(400, "Hãy nhập ý tưởng phim")
+    try:
+        s = await drama.write_series(premise, max(1, min(int(p.get("n_eps") or 6), 12)),
+                                     max(3, min(int(p.get("n_scenes") or 7), 12)), p.get("look") or "drama", bool(p.get("english")))
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, f"Không viết được kịch bản: {e}")
+    s["watermark"] = (p.get("watermark") or "").strip()
+    return s
+
+
+@app.post("/api/series")
+async def create_series(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    try:
+        script = drama.normalize(p.get("script") or {})
+    except Exception as e:
+        raise HTTPException(400, f"Kịch bản không hợp lệ: {e}")
+    sid = p.get("id") if p.get("id") in series else _new_id()
+    if series.get(sid, {}).get("status") in ("running", "queued"):
+        raise HTTPException(409, "Series này đang làm video, chờ xong đã")
+    n = len(script["episodes"])
+    only = [int(x) for x in (p.get("only") or []) if 1 <= int(x) <= n] or list(range(1, n + 1))
+    old = series.get(sid, {}).get("episodes") or []
+    eps = [old[i] if i < len(old) and (i + 1) not in only else {"n": i + 1, "status": "queued"} for i in range(n)]
+    for i, e in enumerate(eps):
+        e.update(title=script["episodes"][i].get("title", ""), caption=script["episodes"][i].get("caption", ""))
+    series[sid] = {"id": sid, "status": "queued", "progress": 0, "message": "Đang chờ tới lượt…", "created": time.time(),
+                   "title": script.get("title", ""), "script": script, "episodes": eps, "only": only,
+                   "refs": series.get(sid, {}).get("refs", [])}
+    _save_series()
+    asyncio.create_task(_run_series(sid))
+    return series[sid]
+
+
+def _new_id() -> str:
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:4]
+
+
+def _refs(job: dict) -> list[dict]:
+    d, out = SERIES_DIR / job["id"] / "refs", []
+    for c in job["script"].get("characters", []):
+        f = d / f"{c['key']}.png"
+        if f.exists():
+            out.append({"key": c["key"], "name": c["name"], "url": _out_url(f) + f"?v={f.stat().st_mtime_ns}",
+                        "fixed": (d / f"{c['key']}.fixed").exists()})
+    return out
+
+
+def _char_job(p: dict) -> tuple[dict, dict, Path]:
+    """Series (a draft is created if needed) + character + refs dir for the character-photo endpoints."""
+    script = p.get("script")
+    if script is not None:
+        try:
+            script = drama.normalize(script)
+        except Exception as e:
+            raise HTTPException(400, f"Kịch bản không hợp lệ: {e}")
+    job = series.get(p.get("id"))
+    if job and job["status"] in ("running", "queued"):
+        raise HTTPException(409, "Đang làm video, chờ xong rồi đổi ảnh nhân vật")
+    if job is None:
+        if script is None:
+            raise HTTPException(400, "Chưa có kịch bản")
+        sid = _new_id()
+        job = series[sid] = {"id": sid, "status": "draft", "progress": 0, "message": "Chưa làm video", "created": time.time(),
+                             "title": "", "script": script, "only": [], "refs": [],
+                             "episodes": [{"n": i + 1, "status": "draft", "title": e.get("title", ""), "caption": e.get("caption", "")}
+                                          for i, e in enumerate(script["episodes"])]}
+    if script is not None:
+        job["script"] = script
+    job["title"] = job["script"].get("title", "")
+    key = str(p.get("key") or "")
+    c = next((c for c in job["script"]["characters"] if c["key"] == key), None)
+    if c is None or not re.fullmatch(r"[\w\- ]+", key):
+        raise HTTPException(400, "Không có nhân vật này trong kịch bản")
+    return job, c, SERIES_DIR / job["id"] / "refs"
+
+
+@app.post("/api/series/char/options")
+async def char_options(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    job, c, refs = _char_job(p)
+    _save_series()
+    try:
+        files = await drama.ref_options(c, refs, max(1, min(int(p.get("n") or 3), 4)))
+    except Exception as e:
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, f"Không vẽ được ảnh nhân vật: {e}")
+    return {"id": job["id"], "options": [_out_url(f) for f in files]}
+
+
+@app.post("/api/series/char/pick")
+async def char_pick(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    job, c, refs = _char_job(p)
+    if p.get("data"):
+        raw = str(p["data"]).split(",", 1)[-1]
+        if len(raw) > 20_000_000:
+            raise HTTPException(400, "Ảnh quá lớn (tối đa ~15MB)")
+        src = base64.b64decode(raw)
+    else:
+        src = _out_file(p.get("url") or "")
+        if src.parent != (refs / "cand").resolve():
+            raise HTTPException(400, "Ảnh không thuộc series này")
+    try:
+        drama.set_ref(c, refs, src)
+    except Exception as e:
+        raise HTTPException(400, f"Không đọc được ảnh: {e}")
+    job["refs"] = _refs(job)
+    _save_series()
+    return job
+
+
+@app.post("/api/series/char/reset")
+async def char_reset(req: Request):
+    _check_pw(req)
+    job, c, refs = _char_job(await req.json())
+    drama.reset_ref(c, refs)
+    job["refs"] = _refs(job)
+    _save_series()
+    return job
+
+
+@app.get("/api/series")
+async def list_series():
+    return [{k: v for k, v in j.items() if k != "script"} for j in sorted(series.values(), key=lambda j: j["created"], reverse=True)[:30]]
+
+
+@app.get("/api/series/{sid}")
+async def get_series(sid: str):
+    if sid not in series:
+        raise HTTPException(404, "Không tìm thấy")
+    return series[sid]
+
+
+async def _run_series(sid: str):
+    job = series[sid]
+    s, d = job["script"], SERIES_DIR / sid
+    async with run_lock:
+        job.update(status="running", message="Đang tạo ảnh mẫu nhân vật…")
+        _save_series()
+        try:
+            await asyncio.gather(*[drama.make_ref(c, d / "refs") for c in s["characters"]])
+            job["refs"] = _refs(job)
+            for k, n in enumerate(job["only"]):
+                ep = job["episodes"][n - 1]
+                ep.update(status="running", error="")
+
+                def prog(frac, msg, k=k):
+                    job.update(progress=round(100 * (k + frac) / len(job["only"])), message=msg)
+
+                try:
+                    r = await drama.render_episode(s, n, d, prog)
+                    ep.update(status="done", video_url=_out_url(r["video"]) + f"?v={int(time.time())}",
+                              sheet_url=_out_url(r["sheet"]) + f"?v={int(time.time())}", duration=r["duration"])
+                except Exception as e:
+                    logger.error(traceback.format_exc())
+                    ep.update(status="error", error=str(e)[:400])
+                _save_series()
+            bad = [e["n"] for e in job["episodes"] if e["status"] == "error"]
+            job.update(status="error" if bad else "done", progress=100,
+                       message=f"Lỗi ở tập {', '.join(map(str, bad))}" if bad else "Xong!", error="")
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            job.update(status="error", error=str(e)[:500], message="Lỗi")
+        _save_series()
+
+
+# ---------- Facebook ----------
+def _fb(fn):
+    try:
+        return fn()
+    except fbmod.FBError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/fb")
+async def fb_info(req: Request):
+    _check_pw(req)
+    return fb.public()
+
+
+@app.post("/api/fb/connect")
+async def fb_connect(req: Request):
+    _check_pw(req)
+    tok = ((await req.json()).get("token") or "").strip()
+    if not tok:
+        raise HTTPException(400, "Hãy dán token")
+    try:
+        return await fb.connect(tok)
+    except fbmod.FBError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/fb/select")
+async def fb_select(req: Request):
+    _check_pw(req)
+    pid = (await req.json()).get("page_id") or ""
+    return _fb(lambda: fb.select(pid))
+
+
+@app.post("/api/fb/disconnect")
+async def fb_disconnect(req: Request):
+    _check_pw(req)
+    fb.disconnect()
+    return fb.public()
+
+
+@app.get("/api/fb/posts")
+async def fb_posts(req: Request):
+    _check_pw(req)
+    return [{k: v for k, v in p.items() if k != "file"} for p in fb.posts()[:100]]
+
+
+@app.post("/api/fb/posts")
+async def fb_new_post(req: Request):
+    _check_pw(req)
+    p = await req.json()
+    f = _out_file(p.get("video_url") or "")
+    ts = int(p["ts"]) if p.get("ts") else None
+    post = _fb(lambda: fb.new_post(str(f), p.get("caption") or "", p.get("mode") or "draft", ts, p.get("title") or ""))
+    asyncio.create_task(fb.upload(post))
+    return post
+
+
+def _post(pid: str) -> dict:
+    if pid not in fb.state["posts"]:
+        raise HTTPException(404, "Không tìm thấy bài")
+    return fb.state["posts"][pid]
+
+
+@app.post("/api/fb/posts/{pid}/refresh")
+async def fb_refresh(pid: str, req: Request):
+    _check_pw(req)
+    try:
+        return await fb.refresh(_post(pid))
+    except fbmod.FBError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/fb/posts/{pid}/schedule")
+async def fb_schedule(pid: str, req: Request):
+    _check_pw(req)
+    ts = int((await req.json()).get("ts") or 0)
+    try:
+        return await fb.reschedule(_post(pid), ts)
+    except fbmod.FBError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/output/{path:path}")

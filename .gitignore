@@ -5,3 +5,4 @@ temp/
 config.yaml
 .venv/
 .env
+service-account.json
