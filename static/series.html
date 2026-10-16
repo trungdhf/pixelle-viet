@@ -151,6 +151,8 @@ function fillForm(s) {
   $("english").checked = !!s.english;
   $("watermark").value = s.watermark || "";
   $("n_eps").value = (s.episodes || []).length || $("n_eps").value;
+  const sc = Math.max(0, ...(s.episodes || []).map(e => (e.scenes || []).length));
+  if (sc) $("n_scenes").value = sc;
 }
 function readScript() {
   try { return JSON.parse($("script").value); } catch (e) { throw new Error("JSON kịch bản bị lỗi: " + e.message); }
